@@ -1,0 +1,29 @@
+# Entornos virtuales
+venv/
+*.venv/
+env/
+ENV/
+
+# Archivos de Python compilados
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Archivos de IDE
+.vscode/
+.idea/
+
+# Archivos de sistema operativo
+.DS_Store
+Thumbs.db
+
+# Archivos de dependencias (si se instalan localmente y no se quieren en el repo)
+# dist/
+# build/
+# *.egg-info/
+
+# Datos sensibles o logs (ejemplos)
+# *.log
+# credentials.json
+
+# model/iris_model.pkl
