@@ -6,18 +6,21 @@ on:
       - main
       - staging
       - develop
-      - 'feature/**' # Ejecuta en feature branches (pero no pushea imagen)
-      - 'fix/**'     # Ejecuta en hotfix branches (pero no pushea imagen)
+      - 'feature/**'
+      - 'fix/**'
   pull_request:
     branches:
       - main
       - staging
       - develop
-  workflow_dispatch:   # Para ejecución manual
+  workflow_dispatch:
 
 jobs:
   train_build_push:
     runs-on: ubuntu-latest
+    outputs:
+      docker_image_pushed: ${{ steps.docker_build_push.outputs.pushed }}
+      docker_tag: ${{ steps.docker_meta.outputs.DOCKER_TAG }}
     steps:
       - name: Checkout del repositorio
         uses: actions/checkout@v4
@@ -33,7 +36,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: (Re)entrenar el modelo
-        run: python model/train_model.py 
+        run: python model/train_model.py
 
       - name: Determinar Tag de Docker
         id: docker_meta
@@ -52,13 +55,13 @@ jobs:
           echo "Docker tag will be: $TAG"
 
       - name: Login a Docker Hub
-        # Solo ejecutar en pushes a main, staging, o develop
+        id: docker_login # Darle un ID para referenciar outputs si es necesario
         if: |
           github.event_name == 'push' &&
           (github.ref == 'refs/heads/main' ||
            github.ref == 'refs/heads/staging' ||
            github.ref == 'refs/heads/develop') &&
-          secrets.DOCKERHUB_USERNAME != '' && 
+          secrets.DOCKERHUB_USERNAME != '' &&
           secrets.DOCKERHUB_TOKEN != ''
         uses: docker/login-action@v3
         with:
@@ -66,7 +69,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Construir y empujar imagen Docker
-        # Solo ejecutar en pushes a main, staging, o develop
+        id: docker_build_push # Darle un ID para referenciar outputs
         if: |
           github.event_name == 'push' &&
           (github.ref == 'refs/heads/main' ||
@@ -76,11 +79,22 @@ jobs:
           secrets.DOCKERHUB_TOKEN != ''
         uses: docker/build-push-action@v5
         with:
-          context: . # Directorio raíz de tu repo donde está el Dockerfile
+          context: .
           file: ./Dockerfile
-          push: true # Empujar la imagen a Docker Hub
+          push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/iris-predictor:${{ steps.docker_meta.outputs.DOCKER_TAG }}
-          # Ejemplo: siles4me/iris-predictor:latest, siles4me/iris-predictor:staging, etc.
+          # Agregamos outputs para saber si se empujó la imagen
+          outputs: | 
+            type=boolean,name=pushed
 
-      - name: Verificar ejecución de la acción (simulación)
-        run: echo "El workflow de CI/CD se ejecutó para la rama/evento ${{ github.ref_name }} / ${{ github.event_name }}. Docker tag: ${{ steps.docker_meta.outputs.DOCKER_TAG }}. Push a Docker Hub: ${{ (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/develop')) }}"
+      - name: Verificar ejecución de la acción
+        # Esta es la línea que podría ser la 86 o cercana
+        run: |
+          echo "Workflow ejecutado para: ${{ github.ref_name }} / ${{ github.event_name }}"
+          echo "Tag de Docker determinado: ${{ steps.docker_meta.outputs.DOCKER_TAG }}"
+          # Solo mostrar el mensaje de push si el paso anterior efectivamente empujó
+          if [[ "${{ steps.docker_build_push.outputs.pushed }}" == "true" ]]; then
+            echo "Imagen Docker empujada a Docker Hub: ${{ secrets.DOCKERHUB_USERNAME }}/iris-predictor:${{ steps.docker_meta.outputs.DOCKER_TAG }}"
+          else
+            echo "No se empujó imagen a Docker Hub en este flujo (ej. PR o feature branch)."
+          fi
