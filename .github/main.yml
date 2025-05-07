@@ -1,0 +1,52 @@
+name: CI/CD Modelo ML y Despliegue Docker
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  train_build_push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Instalar dependencias de Python
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: (Re)entrenar el modelo
+        run: python model/train_model.py
+
+      - name: Login a Docker Hub (Opcional, pero recomendado)
+        # Solo ejecutar en pushes a 'main' y no en PRs, para evitar exponer secretos innecesariamente
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && success()
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Construir y empujar imagen Docker
+        # Solo ejecutar en pushes a 'main' y no en PRs
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && success()
+        uses: docker/build-push-action@v5
+        with:
+          context: . # Directorio raíz de tu repo donde está el Dockerfile
+          file: ./Dockerfile
+          push: true # Empujar la imagen a Docker Hub
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/tu-nombre-de-imagen:latest # Reemplaza con tu usuario y nombre de imagen
+          # Ejemplo: micuenta/iris-predictor:latest
+          # Puedes añadir más tags, como el SHA del commit:
+          # tags: |
+          #   ${{ secrets.DOCKERHUB_USERNAME }}/tu-nombre-de-imagen:latest
+          #   ${{ secrets.DOCKERHUB_USERNAME }}/tu-nombre-de-imagen:${{ github.sha }}
+
+      - name: Verificar ejecución de la acción (simulación)
+        run: echo "El workflow de CI/CD se ejecutó correctamente."
