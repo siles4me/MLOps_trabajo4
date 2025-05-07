@@ -2,18 +2,8 @@ name: CI/CD Modelo ML y Despliegue Docker
 
 on:
   push:
-    branches:
-      - main
-      - staging
-      - develop
-      - 'feature/**' # Ejecuta en feature branches (pero no pushea imagen)
-      - 'fix/**'     # Ejecuta en hotfix branches (pero no pushea imagen)
-  pull_request:
-    branches:
-      - main
-      - staging
-      - develop
-  workflow_dispatch:   # Para ejecución manual
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   train_build_push:
@@ -33,54 +23,28 @@ jobs:
           pip install -r requirements.txt
 
       - name: (Re)entrenar el modelo
-        run: python model/train_model.py 
+        run: python model/train_model.py
 
-      - name: Determinar Tag de Docker
-        id: docker_meta
-        run: |
-          BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/} | sed 's/\//-/g')
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            TAG="latest"
-          elif [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
-            TAG="staging"
-          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
-            TAG="develop"
-          else
-            TAG=${BRANCH_NAME:-$(echo $GITHUB_SHA | head -c7)}
-          fi
-          echo "DOCKER_TAG=${TAG}" >> $GITHUB_OUTPUT
-          echo "Docker tag will be: $TAG"
-
-      - name: Login a Docker Hub
-        # Solo ejecutar en pushes a main, staging, o develop
-        if: |
-          github.event_name == 'push' &&
-          (github.ref == 'refs/heads/main' ||
-           github.ref == 'refs/heads/staging' ||
-           github.ref == 'refs/heads/develop') &&
-          secrets.DOCKERHUB_USERNAME != '' && 
-          secrets.DOCKERHUB_TOKEN != ''
+      - name: Login a Docker Hub (Opcional, pero recomendado)
+        # Solo ejecutar en pushes a 'main' y no en PRs, para evitar exponer secretos innecesariamente
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && success()
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Construir y empujar imagen Docker
-        # Solo ejecutar en pushes a main, staging, o develop
-        if: |
-          github.event_name == 'push' &&
-          (github.ref == 'refs/heads/main' ||
-           github.ref == 'refs/heads/staging' ||
-           github.ref == 'refs/heads/develop') &&
-          secrets.DOCKERHUB_USERNAME != '' &&
-          secrets.DOCKERHUB_TOKEN != ''
+        # Solo ejecutar en pushes a 'main' y no en PRs
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && success()
         uses: docker/build-push-action@v5
         with:
           context: . # Directorio raíz de tu repo donde está el Dockerfile
           file: ./Dockerfile
           push: true # Empujar la imagen a Docker Hub
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/iris-predictor:${{ steps.docker_meta.outputs.DOCKER_TAG }}
-          # Ejemplo: siles4me/iris-predictor:latest, siles4me/iris-predictor:staging, etc.
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/iris-predictor:latest 
+          # tags: |
+          #   ${{ secrets.DOCKERHUB_USERNAME }}/tu-nombre-de-imagen:latest
+          #   ${{ secrets.DOCKERHUB_USERNAME }}/tu-nombre-de-imagen:${{ github.sha }}
 
       - name: Verificar ejecución de la acción (simulación)
-        run: echo "El workflow de CI/CD se ejecutó para la rama/evento ${{ github.ref_name }} / ${{ github.event_name }}. Docker tag: ${{ steps.docker_meta.outputs.DOCKER_TAG }}. Push a Docker Hub: ${{ (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/develop')) }}"
+        run: echo "El workflow de CI/CD se ejecutó correctamente."
